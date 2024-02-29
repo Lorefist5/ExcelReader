@@ -1,5 +1,6 @@
 ﻿using ExcelReader;
-using ExcelReader.Models;
+using ExcelReader.Configs;
+using ExcelReader.ConsoleTest;
 using System.Drawing;
 
 DataframeConfig dataframeConfig = new DataframeConfig()
@@ -7,7 +8,7 @@ DataframeConfig dataframeConfig = new DataframeConfig()
     BackgroundColor = Color.Gray,
     TextColor = Color.White,
     HeaderBackgroundColor = Color.Black,
-    HeaderTextColors = Color.White,
+    HeaderTextColor = Color.White,
 };
 ExcelForge excelForge = new ExcelForge(dataframeConfig);
 
@@ -27,6 +28,17 @@ List<Student> students = new List<Student>()
 
 
 
-excelForge.CreateExcelPackage().CreateExcelSheet("Sheet1").AddDataframe(students,1,1).SaveAs("Test");
+excelForge.CreateExcelPackage().CreateExcelSheet("Sheet1").AddDataframe(students,1,1).SaveAs("Students");
 
 
+var studentsInExcel = excelForge.ReadExcelFile("Students").ReadDataframe<StudentDto>(1, 1);
+
+var filteredStudents = studentsInExcel.Where(s => s.IsAbove18).ToList();
+
+
+foreach(var filteredStduent in filteredStudents)
+{
+    Console.WriteLine(filteredStduent.Name);
+}
+
+Console.ReadLine();

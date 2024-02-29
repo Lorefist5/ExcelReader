@@ -10,4 +10,8 @@
     <PackageReference Include="EPPlus" Version="7.0.9" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Models\" />
+  </ItemGroup>
+
 </Project>

@@ -1,5 +1,5 @@
 ﻿using ExcelReader.Attributes;
-using ExcelReader.Models;
+using ExcelReader.Configs;
 using ExcelReader.Utilities;
 using OfficeOpenXml;
 using System.Reflection;
@@ -78,7 +78,8 @@ public class ExcelForge
 
         while (worksheet.Cells[currentRow, startColumn].Value != null)
         {
-            T item = PopulateObjectFromRow<T>(worksheet, properties, excelColumnNames, currentRow, startColumn);
+            WorksheetUtility worksheetUtility = new WorksheetUtility(worksheet,excelColumnNames, startColumn, startRow);
+            T item = PopulateObjectFromRow<T>(worksheetUtility, properties, excelColumnNames, currentRow, startColumn);
             result.Add(item);
             currentRow++;
         }
@@ -99,7 +100,7 @@ public class ExcelForge
 
         foreach (var property in properties)
         {
-            var excelAttributes = GetDefaultExcelAttribute(property);
+            var excelAttributes = ExcelAttribute.GetDefaultExcelAttribute(property);
 
             if (excelAttributes.IsProperty)
             {
@@ -107,7 +108,7 @@ public class ExcelForge
                 string coordinates = _excelUtility.GetExcelCoords(startRow, headerColumn);
                 ExcelRange cell = worksheet.Cells[coordinates];
                 cell.Value = columnName;
-                cell.Style.Font.Color.SetColor(_dataframeConfig.HeaderTextColors);
+                cell.Style.Font.Color.SetColor(_dataframeConfig.HeaderTextColor);
                 cell.Style.Fill.PatternType = _dataframeConfig.FillStyle;
                 cell.Style.Fill.BackgroundColor.SetColor(_dataframeConfig.HeaderBackgroundColor);
                 headerColumn++;
@@ -122,24 +123,27 @@ public class ExcelForge
 
             foreach (var property in properties)
             {
-                string coordinates = _excelUtility.GetExcelCoords(currentRow, currentColumn);
-
-                var defaultValue = property.GetCustomAttribute<ExcelAttribute>()?.DefaultValue;
-                var cellValue = property.GetValue(item) ?? defaultValue;
-
-                ExcelRange cell = worksheet.Cells[coordinates];
-                if (property.PropertyType == typeof(int))
+                var excelAttributes = ExcelAttribute.GetDefaultExcelAttribute(property);
+                if(excelAttributes.IsProperty)
                 {
-                    cell.Value = cellValue;
+                    string coordinates = _excelUtility.GetExcelCoords(currentRow, currentColumn);
+
+                    var cellValue = property.GetValue(item) ?? excelAttributes.DefaultValue;
+
+                    ExcelRange cell = worksheet.Cells[coordinates];
+                    if (property.PropertyType == typeof(int))
+                    {
+                        cell.Value = cellValue;
+                    }
+                    else
+                    {
+                        cell.Value = cellValue?.ToString();
+                    }
+                    cell.Style.Font.Color.SetColor(_dataframeConfig.TextColor);
+                    cell.Style.Fill.PatternType = _dataframeConfig.FillStyle;
+                    cell.Style.Fill.BackgroundColor.SetColor(_dataframeConfig.BackgroundColor);
+                    currentColumn++;
                 }
-                else
-                {
-                    cell.Value = cellValue?.ToString();
-                }
-                cell.Style.Font.Color.SetColor(_dataframeConfig.TextColor);
-                cell.Style.Fill.PatternType = _dataframeConfig.FillStyle;
-                cell.Style.Fill.BackgroundColor.SetColor(_dataframeConfig.BackgroundColor);
-                currentColumn++;
             }
 
             currentRow++;
@@ -166,40 +170,30 @@ public class ExcelForge
         var excelAttribute = property.GetCustomAttribute<ExcelAttribute>();
         return excelAttribute?.Name ?? property.Name;
     }
-    private T PopulateObjectFromRow<T>(ExcelWorksheet worksheet, List<PropertyInfo> properties, List<string> excelColumnNames, int currentRow, int startColumn) where T : class, new()
+    private T PopulateObjectFromRow<T>(WorksheetUtility worksheetUtility, List<PropertyInfo> properties, List<string> excelColumnNames, int currentRow, int startColumn) where T : class, new()
     {
         T item = new T();
         int currentColumn = startColumn;
-
-        foreach (var property in properties)
+        var filteredProperties = properties.Where(p => p.GetCustomAttribute<ExcelAttribute>() == null || p.GetCustomAttribute<ExcelAttribute>().IsProperty).ToList();
+        foreach (var property in filteredProperties)
         {
-            var excelAttribute = GetDefaultExcelAttribute(property);
+            var excelAttribute = ExcelAttribute.GetDefaultExcelAttribute(property);
 
             string columnName = excelAttribute.Name ?? property.Name;
 
-            var matchingColumnName = excelColumnNames.FirstOrDefault(c => c.Equals(columnName, StringComparison.OrdinalIgnoreCase));
+            int matchingColumnIndex = worksheetUtility.GetMatchingColumnIndex(columnName);
 
-            if (matchingColumnName != null)
+            if (matchingColumnIndex > 0)
             {
-                var cellValue = worksheet.Cells[currentRow, excelColumnNames.IndexOf(matchingColumnName) + startColumn].Value?.ToString();
-                if (cellValue != null)
-                {
-                    var convertedValue = Convert.ChangeType(cellValue, property.PropertyType);
-
-                    property.SetValue(item, convertedValue);
-                }
+                var convertedValue = worksheetUtility.GetObjectFromCell(property, currentRow, matchingColumnIndex);
+                property.SetValue(item, convertedValue);
             }
+
 
             currentColumn++;
         }
 
         return item;
-    }
-    private ExcelAttribute GetDefaultExcelAttribute(PropertyInfo property)
-    {
-        var excelAttribute = property.GetCustomAttribute<ExcelAttribute>();
-        if (excelAttribute == null) excelAttribute= new ExcelAttribute() { IsProperty = true};
-        return excelAttribute;
     }
     private void EnsureExcelPackageCreated()
     {
